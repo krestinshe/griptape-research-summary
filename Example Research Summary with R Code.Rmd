@@ -1,0 +1,195 @@
+---
+title: "Data Visualization: GripTape Research Summary"
+author: "Christine Shi"
+output: pdf_document
+header-includes:
+- \usepackage{pdfpages}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Introduction 
+
+This document is meant to showcase my skills in data science, data visualization, and the written explanation of data to a non-technical audience. It includes the content pages from an example Research Summary that I made for the GripTape project in the Purpose and Identity Processes Lab at Cornell. The code I used to produce the graphs in the Research Summary is included after the Example Research Summary.
+
+## An example Research Summary from my work with the GripTape project in the Purpose and Identity Processes Lab at Cornell. 
+|    GripTape is a youth development program that offers high-school-age participants ("Challengers") grants and mentoring to undertake a "Learning Challenge" to learn a project of their choosing. They fill out a survey daily with their scores on a number of key variables, including purpose, perceived Challenge progress, self-esteem, and positive and negative affect. Our lab, in collaboration with GripTape, researches the trajectories Challengers experience throughout their Learning Challenges.  
+|    In order to promote open science and a bidirectional flow of information in research, the research assistants on the GripTape project have been creating "Research Summaries," documents with a static cover, introduction, and credit page, along with three individualized content pages sharing Challengers' own data from their Challenge with them with accessible graphs and explanations. These Research Summaries are made from start to finish by the RAs, who take the GripTape data, clean it, explore trends in it, and visualize it in RStudio, write explanations, and send the Summaries off to supervising project leaders for feedback and compilation into the final deliverable. In this supplement, I have only included the content pages with graphs and explanations that I produced.  
+|    The Research Summaries have been received by Challengers with enthusiasm and were cited as the second most popular reason for participation in research. Mark Murphy, founder and CEO of GripTape, said, “No one gets data like this. The value added to the young person is gigantic. But the value added to the field as a whole, as I’m talking to funders, other nonprofit partners . . . [Research Summaries] are rattling the assumptions of people leading the field . . . and questioning what they thought was possible.”  
+
+\newpage
+
+\includepdf[pages={-}]{CID1540.pdf}
+
+\newpage
+## Code used to create the Research Summary
+### Loading, cleaning and editing data: 
+```{r clean, eval = FALSE}
+# set working directory to the folder I have all my files
+setwd("C:/Users/01csh/R-workspace/GripTape")
+
+# load data 
+dat <- read.csv("lc16daily_9.15.csv", sep = ",", header = TRUE,
+                stringsAsFactors = FALSE)
+
+# download packages
+library(tidyverse) # used for working with the data
+library(ggplot2) # used for plotting
+
+# convert variables to numeric 
+dat[c("Day", "prog_1", "motiv_1", "purpose_1", "lifesat_1", "esteem_1", 
+      "clarity_1", "em_1", "em_2", "em_3", "selfreg_1", "selfreg_2", 
+      "selfreg_3", "selfreg_4", "affect_1", "affect_2", "affect_3", "affect_4",
+      "affect_5", "affect_6", "affect_7", "affect_8")] <- 
+  sapply(dat[c("Day", "prog_1", "motiv_1", "purpose_1", "lifesat_1", 
+               "esteem_1", "clarity_1", "em_1", "em_2", "em_3", "selfreg_1", 
+               "selfreg_2", "selfreg_3", "selfreg_4", "affect_1", "affect_2", 
+               "affect_3", "affect_4", "affect_5", "affect_6", "affect_7", 
+               "affect_8")],
+         as.numeric)
+
+# create new rows with the averages for environmental mastery, self 
+# regulation, and positive and negative affect
+dat <- dat %>% 
+  dplyr::mutate(em = rowMeans(.[,c("em_1", "em_2", "em_3")], na.rm = TRUE),
+                selfreg = rowMeans(.[,c("selfreg_1", "selfreg_2", "selfreg_3",
+                                   "selfreg_4")], na.rm = TRUE),
+                pa = rowMeans(.[,c("affect_1", "affect_2", "affect_3", 
+                                   "affect_4")], na.rm = TRUE),
+                na = rowMeans(.[,c("affect_5", "affect_6", "affect_7", 
+                                   "affect_8")], na.rm = TRUE)) %>% 
+# rename variables
+  dplyr::rename(prog = prog_1,
+                motiv = motiv_1,
+                purpose = purpose_1,
+                lifesat = lifesat_1,
+                esteem = esteem_1,
+                clarity = clarity_1)
+```
+In a behind-the-scenes step (for the sake of data privacy), I pull all of the individual Challenger's data, removing rows of NAs, into its own data frame called "dat2".
+
+### Plot 1: Unified Structural Equation Model
+This network graph is based on a machine learning tool called a unified structural equation model (uSEM), which explores the associations between a set of the Challenger's variables (I chose 5) during their Learning Challenge. It represents the valence (positive or negative), strength, direction, and temporality (same-day or next-day) of relationships between each variable, as well as each variable's stability within itself. I explain this network and how to interpret it in more detail on the second and third content pages of the Research Summary.
+```{r plot1, eval = FALSE}
+# the package "pompom" is used to implement the uSEM and plot the network graph
+library(pompom)
+
+# pick the variables I want to include in the model: perceived Challenge 
+# progress, motivation, life satisfaction, positive affect, and negative affect
+# and put them into a vector that will be used later to fit and plot the model
+vars <- c("prog","motiv","lifesat","pa","na")
+
+# subset to the variables you want
+dat_vars <- dat2 %>% 
+  dplyr::select("CID", "Day", all_of(vars))
+
+# z-standardize the variables, and replace the original values with the 
+# newly standardized values
+dat_z <- dat_vars
+for(var in vars) {
+  dat_z[var] <- dat_vars[var] %>% 
+    sapply(function(x) c(scale(x, center = TRUE, scale = TRUE)))
+}
+
+# fit a unified structural equation model (uSEM). 
+usem <- uSEM(var.number = length(vars), # number of variables in the network
+             data = dat_z[ , c(vars)], # columns of the standardized variables
+             lag.order = 1, # observations lagged by 1 day
+             verbose = FALSE, # verbose and trim cut down on the text we see
+             trim = FALSE) 
+
+# save the model summary from the usem, needed for plotting later.
+ms <- model_summary(model.fit = usem,
+                    var.number = length(vars),
+                    lag.order = 1)
+
+# this prints the answer to the question whether 3 of 4 fit indices of the model 
+# pass acceptable thresholds. this must return TRUE, or else the path estimates
+# are inaccurate, the model does not fit the data, I'm not reporting 
+# something reliable, and likely something is wrong with my data inputs. USEM is
+# a machine learning tool that typically runs until it fits the data well (i.e.,
+# results in “TRUE”).
+print(sum(ms$cfi > .95, 
+          ms$tli > .95,
+          ms$rmsea < .08,
+          ms$srmr < .08) >= 3)
+
+# plot the network and save it as a png:
+png("network.png", type = "cairo") 
+# this "opens" a png file and sets the type to cairo, which removes aliasing 
+# to make the lines in the plot smooth in the final output
+plot_network_graph(ms$beta, var.number = length(vars)) 
+# plot the graph "onto" the png. this uses the function plot_network_graph() 
+# from the package "pompom", and uses the beta matrix from the uSEM model 
+# summary that I saved from earlier, which contains all the correlations
+# between the variables, same-day and next-day.
+dev.off() 
+# "close" the png. after this, the png will be saved in my working directory 
+# under the name I gave it ("network.png")
+```
+
+### Plot 2: Twin Loess Line Plot of Perceived Challenge Progress and Motivation
+```{r plot2, eval = FALSE}
+# to create this plot, I had to pivot the data to longer form (less columns, 
+# more rows), in order to be able to subset the data by the variable 
+# (perceived Challenge progress and motivation)
+dat2_long <- dat2 %>% 
+  pivot_longer(c("prog","motiv"), names_to="var", values_to="level")
+
+progmotiv <- ggplot(dat2_long, aes(Day, level, color = var)) +
+  # maps the color of the line to the variable, creating 2 different-colored 
+  # lines for perceived Challenge progress and motivation
+  geom_smooth(method=loess, size=1.3, se=T, fill = "gray", alpha = .3) +
+  # draws the loess lines
+  scale_color_manual(values=c("orange", "royalblue"), 
+                     labels=c("Motivation", "Perceived Challenge Progress")) +
+  # sets the colors and labels for each line
+  scale_y_continuous(limits=c(.5,4.5), breaks=c(1:5)) + 
+  #edit the y axis for better readability and visuals
+  theme_classic() +
+  labs(x = "Day", 
+       y = "Score",
+       color = "" , # makes the legend title blank
+       title = "Your Perceived Challenge Progress and Motivation by Day") +
+  # set labels for the axes and graph 
+  theme(plot.title = element_text(hjust=0.5, color="black", size=rel(1.7)),
+        axis.title = element_text(color="black", hjust=0.5),
+        axis.text=element_text(color="black"),
+        aspect.ratio=5/16,
+        legend.position = "top"
+  ) # other text and scale customizations
+  
+# saves the graph as a png, with "cairo" to make lines smoother just as above
+ggsave("progmotiv.png", type = "cairo", scale=1.5, plot = progmotiv)
+```
+
+### Plot 3: Twin Line Plot of Positive and Negative Affect
+```{r plot3, eval = FALSE}
+
+library(ggforce)
+colors <- c("Positive Affect" = "royalblue", "Negative Affect" = "orange")
+
+pana <- (ggplot(dat2, aes(x = Day)) +
+    geom_line(aes(y = pa, color = "Positive Affect"), size = 1.3) +
+    geom_line(aes(y = na, color = "Negative Affect"), size = 1.3) +
+    scale_color_manual(values = colors) + 
+    facet_zoom(dplyr::between(Day, 17, 27), horizontal = TRUE, zoom.size=0.5) +
+    scale_x_continuous(breaks = function(Day)pretty(Day, n = 10)) +
+    theme_classic() +
+    labs(x = "Day", 
+         y = "Affect", 
+         color = "Legend",
+         title = "Your Positive and Negative Affect by Day") +
+    theme(plot.title = element_text(hjust=0.5,size = rel(1.7)), 
+          legend.position= c(1.1, 0.5),
+          legend.background = element_rect(size=0.5, linetype="solid", colour = "black"),
+          plot.margin=unit(c(.75,5.5,.75,.75),"cm"),
+          aspect.ratio=5/16))
+
+# save as png with cairo
+ggsave("pana.png", type = "cairo", scale = 1.5, width=7, height = 3.8, 
+       plot = pana)
+```
+
